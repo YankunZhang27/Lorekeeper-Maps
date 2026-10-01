@@ -544,9 +544,21 @@ canvas.addEventListener('touchend', (e) => {
 });
 
 // ========== INITIALIZATION ==========
-initializeLayers();
-updateZoomDisplay();
-updatePinsList();
-fitCanvasToViewport();
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initialize);
+} else {
+    initialize();
+}
 
-console.log('🗺️ Lorekeeper Maps ready!');
+function initialize() {
+    console.log('Initializing Lorekeeper Maps...');
+    initializeLayers();
+    updateZoomDisplay();
+    updatePinsList();
+    setTimeout(() => {
+        fitCanvasToViewport();
+        render();
+    }, 100);
+    console.log('🗺️ Lorekeeper Maps ready!');
+}
