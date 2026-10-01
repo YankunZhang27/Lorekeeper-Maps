@@ -236,9 +236,9 @@ body {
 /* Canvas Area */
 .canvas-area {
     flex: 1;
-    background-color: #fff8f0;
+    background-color: #e8d9c9;
     border-radius: 0;
-    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.05);
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.1);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -365,7 +365,7 @@ body {
     border: 4px solid #804d26;
     border-radius: 0;
     cursor: crosshair;
-    background-color: #fefdfb;
+    background-color: #ffffff;
     box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.15);
     display: block;
     touch-action: none;
