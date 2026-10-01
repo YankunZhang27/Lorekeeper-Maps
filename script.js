@@ -502,10 +502,6 @@ canvas.addEventListener('mousemove', (e) => {
             lctx.stroke();
         } else if (currentTool === 'eraser') {
             lctx.clearRect(pos.x - currentSize / 2, pos.y - currentSize / 2, currentSize, currentSize);
-        } else if (currentTool === 'shape') {
-            lctx.strokeStyle = currentColor;
-            lctx.lineWidth = currentSize;
-            lctx.strokeRect(pos.x - 20, pos.y - 20, 40, 40);
         }
         render();
     }
