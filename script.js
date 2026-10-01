@@ -442,7 +442,7 @@ pinModal.addEventListener('click', (e) => {
 
 // ========== CANVAS DRAWING ==========
 canvas.addEventListener('mousedown', (e) => {
-    const rect = canvas.getBoundingClientRect();
+    const rect = canvasWrapper.getBoundingClientRect();
     const screenX = e.clientX - rect.left;
     const screenY = e.clientY - rect.top;
     const pos = screenToVirtual(screenX, screenY);
@@ -478,7 +478,7 @@ canvas.addEventListener('mousedown', (e) => {
 });
 
 canvas.addEventListener('mousemove', (e) => {
-    const rect = canvas.getBoundingClientRect();
+    const rect = canvasWrapper.getBoundingClientRect();
     const screenX = e.clientX - rect.left;
     const screenY = e.clientY - rect.top;
 
