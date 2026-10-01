@@ -1,10 +1,11 @@
 // JavaScript - This file makes everything WORK and be interactive
 
-// Get the canvas element (the drawing area)
+// Get the canvas element and wrapper
 const canvas = document.getElementById('map-canvas');
 const ctx = canvas.getContext('2d');
+const canvasWrapper = document.getElementById('canvas-wrapper');
 
-// Get all the control elements from the HTML
+// Get all control elements
 const toolSelect = document.getElementById('tool-select');
 const colorSelect = document.getElementById('color-select');
 const brushSize = document.getElementById('brush-size');
@@ -15,167 +16,344 @@ const textInputSection = document.getElementById('text-input-section');
 const clearBtn = document.getElementById('clear-canvas');
 const undoBtn = document.getElementById('undo-btn');
 const downloadBtn = document.getElementById('download-btn');
+const zoomInBtn = document.getElementById('zoom-in');
+const zoomOutBtn = document.getElementById('zoom-out');
+const zoomDisplay = document.getElementById('zoom-display');
+const layersContainer = document.getElementById('layers-container');
+const addLayerBtn = document.getElementById('add-layer');
 
-// Set up canvas size to fill the screen
-function resizeCanvas() {
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
-}
+// ==================== CANVAS & ZOOM/PAN STATE ====================
 
-// Initial setup
+// Set canvas to be MUCH bigger (2000x2000 instead of screen size)
+const CANVAS_WIDTH = 2000;
+const CANVAS_HEIGHT = 2000;
+
+canvas.width = CANVAS_WIDTH;
+canvas.height = CANVAS_HEIGHT;
+
+// Zoom and pan state
+let zoomLevel = 1;
+const minZoom = 0.1;
+const maxZoom = 5;
+let offsetX = 0;  // How far left/right we've panned
+let offsetY = 0;  // How far up/down we've panned
+let isPanning = false;
+let panStartX = 0;
+let panStartY = 0;
+
+// Drawing state
 let currentTool = 'pen';
 let currentColor = '#000000';
 let currentSize = 3;
 let isDrawing = false;
 
-// History for undo functionality
-let drawingHistory = [];
+// ==================== LAYER SYSTEM ====================
 
-// Set initial canvas size
-resizeCanvas();
-window.addEventListener('resize', resizeCanvas);
-
-// Save the current canvas state (for undo)
-function saveState() {
-    drawingHistory.push(canvas.toDataURL());
-    // Keep only the last 20 states to save memory
-    if (drawingHistory.length > 20) {
-        drawingHistory.shift();
+// Each layer is like a separate transparent sheet you can draw on
+class Layer {
+    constructor(name) {
+        this.name = name;
+        this.canvas = document.createElement('canvas');
+        this.canvas.width = CANVAS_WIDTH;
+        this.canvas.height = CANVAS_HEIGHT;
+        this.ctx = this.canvas.getContext('2d');
+        this.visible = true;
     }
 }
 
-// Restore a previous canvas state
-function restoreState() {
-    if (drawingHistory.length > 0) {
-        const lastState = drawingHistory.pop();
-        const img = new Image();
-        img.onload = function() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(img, 0, 0);
+// Array to hold all our layers
+let layers = [];
+let currentLayerIndex = 0;
+
+// Create the first layer when the app starts
+function initializeLayers() {
+    layers = [];
+    addNewLayer('Background');
+    updateLayerUI();
+}
+
+// Add a new empty layer
+function addNewLayer(name = null) {
+    if (name === null) {
+        name = `Layer ${layers.length + 1}`;
+    }
+    const layer = new Layer(name);
+    layers.push(layer);
+    currentLayerIndex = layers.length - 1;
+    updateLayerUI();
+    return layer;
+}
+
+// Get the currently active layer
+function getCurrentLayer() {
+    return layers[currentLayerIndex];
+}
+
+// Update the layer list UI (the sidebar)
+function updateLayerUI() {
+    layersContainer.innerHTML = '';
+
+    // Add each layer to the UI (in reverse order so newest is on top)
+    for (let i = layers.length - 1; i >= 0; i--) {
+        const layer = layers[i];
+        const layerItem = document.createElement('div');
+        layerItem.className = 'layer-item';
+        if (i === currentLayerIndex) {
+            layerItem.classList.add('active');
+        }
+
+        const visibility = document.createElement('div');
+        visibility.className = 'layer-visibility';
+        visibility.textContent = layer.visible ? '👁️' : '🚫';
+        visibility.title = 'Toggle visibility';
+        visibility.onclick = (e) => {
+            e.stopPropagation();
+            layer.visible = !layer.visible;
+            updateLayerUI();
+            redrawCanvas();
         };
-        img.src = lastState;
+
+        const nameSpan = document.createElement('div');
+        nameSpan.className = 'layer-name';
+        nameSpan.textContent = layer.name;
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'btn layer-delete';
+        deleteBtn.textContent = '×';
+        deleteBtn.title = 'Delete layer';
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (layers.length > 1) {
+                layers.splice(i, 1);
+                if (currentLayerIndex >= layers.length) {
+                    currentLayerIndex = layers.length - 1;
+                }
+                updateLayerUI();
+                redrawCanvas();
+            }
+        };
+
+        layerItem.appendChild(visibility);
+        layerItem.appendChild(nameSpan);
+        layerItem.appendChild(deleteBtn);
+
+        // Click to select layer
+        layerItem.onclick = () => {
+            currentLayerIndex = i;
+            updateLayerUI();
+        };
+
+        layersContainer.appendChild(layerItem);
     }
 }
 
-// Update the tool when dropdown changes
+// Redraw the final canvas by combining all visible layers
+function redrawCanvas() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw each visible layer on top of each other
+    for (let i = 0; i < layers.length; i++) {
+        if (layers[i].visible) {
+            ctx.drawImage(layers[i].canvas, 0, 0);
+        }
+    }
+}
+
+// ==================== ZOOM & PAN FUNCTIONS ====================
+
+function updateZoomDisplay() {
+    zoomDisplay.textContent = Math.round(zoomLevel * 100) + '%';
+}
+
+function zoomTo(newZoom, mouseX, mouseY) {
+    // Calculate the point we want to keep centered when zooming
+    const oldZoom = zoomLevel;
+    zoomLevel = Math.max(minZoom, Math.min(maxZoom, newZoom));
+
+    if (mouseX !== undefined && mouseY !== undefined) {
+        // Adjust pan to keep the zoom point centered
+        offsetX = mouseX - (mouseX - offsetX) * (zoomLevel / oldZoom);
+        offsetY = mouseY - (mouseY - offsetY) * (zoomLevel / oldZoom);
+    }
+
+    updateZoomDisplay();
+    updateCanvasTransform();
+}
+
+function updateCanvasTransform() {
+    // Apply CSS transform to scale and position the canvas
+    canvas.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${zoomLevel})`;
+    canvas.style.transformOrigin = '0 0';
+}
+
+// ==================== EVENT LISTENERS ====================
+
+// Zoom with mouse wheel
+canvasWrapper.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;  // Zoom out or in
+    const rect = canvasWrapper.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    zoomTo(zoomLevel * delta, mouseX, mouseY);
+});
+
+// Zoom buttons
+zoomInBtn.addEventListener('click', () => zoomTo(zoomLevel * 1.2));
+zoomOutBtn.addEventListener('click', () => zoomTo(zoomLevel * 0.8));
+
+// Layer management
+addLayerBtn.addEventListener('click', addNewLayer);
+
+// Tool selector
 toolSelect.addEventListener('change', (e) => {
     currentTool = e.target.value;
 
-    // Show text input only if Text tool is selected
     if (currentTool === 'text') {
         textInputSection.style.display = 'block';
     } else {
         textInputSection.style.display = 'none';
     }
 
-    console.log('Tool changed to:', currentTool);
+    // Update cursor
+    if (currentTool === 'pan') {
+        canvas.classList.add('pan-cursor');
+    } else {
+        canvas.classList.remove('pan-cursor');
+    }
 });
 
-// Update the color when dropdown changes
+// Color selector
 colorSelect.addEventListener('change', (e) => {
     currentColor = e.target.value;
-    console.log('Color changed to:', currentColor);
 });
 
-// Update brush size when slider changes
+// Brush size slider
 brushSize.addEventListener('input', (e) => {
     currentSize = e.target.value;
     sizeDisplay.textContent = currentSize + 'px';
 });
 
-// Clear the entire canvas
+// Clear canvas
 clearBtn.addEventListener('click', () => {
-    if (confirm('Are you sure you want to clear the entire canvas?')) {
-        saveState();
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (confirm('Clear the current layer?')) {
+        const layer = getCurrentLayer();
+        layer.ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        redrawCanvas();
     }
 });
 
-// Undo the last action
+// Undo button (simple - clears the current layer)
 undoBtn.addEventListener('click', () => {
-    restoreState();
+    const layer = getCurrentLayer();
+    layer.ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    redrawCanvas();
 });
 
-// Download the map as an image
+// Download as image
 downloadBtn.addEventListener('click', () => {
-    // Create a link element
     const link = document.createElement('a');
-    // Convert canvas to image data
     link.href = canvas.toDataURL('image/png');
-    // Set the filename
     link.download = 'my-lorekeeper-map.png';
-    // Trigger the download
     link.click();
 });
 
-// DRAWING FUNCTIONALITY
+// ==================== DRAWING FUNCTIONALITY ====================
 
-// When mouse button is pressed down
+function getMousePosOnCanvas(e) {
+    const rect = canvasWrapper.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+
+    // Reverse the zoom/pan transformation to get actual canvas coordinates
+    x = (x - offsetX) / zoomLevel;
+    y = (y - offsetY) / zoomLevel;
+
+    return { x, y };
+}
+
 canvas.addEventListener('mousedown', (e) => {
-    isDrawing = true;
-    saveState(); // Save state before drawing
+    const pos = getMousePosOnCanvas(e);
 
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    if (currentTool === 'pan') {
+        // Pan mode - click and drag to move around
+        isPanning = true;
+        panStartX = e.clientX;
+        panStartY = e.clientY;
+        canvas.classList.add('panning');
+    } else {
+        // Drawing modes
+        isDrawing = true;
+        const layer = getCurrentLayer();
+        const layerCtx = layer.ctx;
 
-    // Handle different tools
-    if (currentTool === 'pen') {
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-    } else if (currentTool === 'text') {
-        // Add text at click position
-        if (textInput.value.trim() !== '') {
-            const fontSize = fontSizeInput.value;
-            ctx.font = `${fontSize}px Arial`;
-            ctx.fillStyle = currentColor;
-            ctx.fillText(textInput.value, x, y);
-            textInput.value = ''; // Clear the input after adding text
-            isDrawing = false;
+        if (currentTool === 'pen') {
+            layerCtx.beginPath();
+            layerCtx.moveTo(pos.x, pos.y);
+        } else if (currentTool === 'text') {
+            if (textInput.value.trim() !== '') {
+                const fontSize = fontSizeInput.value;
+                layerCtx.font = `${fontSize}px Arial`;
+                layerCtx.fillStyle = currentColor;
+                layerCtx.fillText(textInput.value, pos.x, pos.y);
+                textInput.value = '';
+                isDrawing = false;
+            }
         }
+
+        redrawCanvas();
     }
 });
 
-// When mouse is moving
 canvas.addEventListener('mousemove', (e) => {
-    if (!isDrawing) return;
+    if (currentTool === 'pan' && isPanning) {
+        // Move the canvas around when panning
+        const deltaX = e.clientX - panStartX;
+        const deltaY = e.clientY - panStartY;
+        offsetX += deltaX;
+        offsetY += deltaY;
+        panStartX = e.clientX;
+        panStartY = e.clientY;
+        updateCanvasTransform();
+    } else if (isDrawing) {
+        const pos = getMousePosOnCanvas(e);
+        const layer = getCurrentLayer();
+        const layerCtx = layer.ctx;
 
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+        if (currentTool === 'pen') {
+            layerCtx.lineWidth = currentSize;
+            layerCtx.lineCap = 'round';
+            layerCtx.lineJoin = 'round';
+            layerCtx.strokeStyle = currentColor;
+            layerCtx.lineTo(pos.x, pos.y);
+            layerCtx.stroke();
+        } else if (currentTool === 'eraser') {
+            layerCtx.clearRect(pos.x - currentSize / 2, pos.y - currentSize / 2, currentSize, currentSize);
+        } else if (currentTool === 'shape') {
+            layerCtx.strokeStyle = currentColor;
+            layerCtx.lineWidth = currentSize;
+            layerCtx.strokeRect(pos.x - 20, pos.y - 20, 40, 40);
+        }
 
-    if (currentTool === 'pen') {
-        // Draw a line
-        ctx.lineWidth = currentSize;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.strokeStyle = currentColor;
-        ctx.lineTo(x, y);
-        ctx.stroke();
-    } else if (currentTool === 'eraser') {
-        // Erase by drawing with white/transparent
-        ctx.clearRect(x - currentSize / 2, y - currentSize / 2, currentSize, currentSize);
-    } else if (currentTool === 'shape') {
-        // Draw a rectangle (for shapes)
-        ctx.strokeStyle = currentColor;
-        ctx.lineWidth = currentSize;
-        ctx.strokeRect(x - 20, y - 20, 40, 40);
+        redrawCanvas();
     }
 });
 
-// When mouse button is released
 canvas.addEventListener('mouseup', () => {
     isDrawing = false;
+    isPanning = false;
+    canvas.classList.remove('panning');
     ctx.closePath();
 });
 
-// When mouse leaves the canvas
 canvas.addEventListener('mouseleave', () => {
     isDrawing = false;
+    isPanning = false;
+    canvas.classList.remove('panning');
     ctx.closePath();
 });
 
-// Touch support for mobile/tablets
+// Touch support for mobile
 canvas.addEventListener('touchstart', (e) => {
     e.preventDefault();
     const touch = e.touches[0];
@@ -202,4 +380,13 @@ canvas.addEventListener('touchend', (e) => {
     canvas.dispatchEvent(mouseEvent);
 });
 
-console.log('Lorekeeper Maps initialized! Start drawing on the canvas.');
+// ==================== INITIALIZATION ====================
+
+initializeLayers();
+updateZoomDisplay();
+updateCanvasTransform();
+
+console.log('✨ Lorekeeper Maps initialized!');
+console.log('🎨 Canvas size: 2000x2000 pixels');
+console.log('🔍 Use scroll wheel to zoom, select Pan tool to move around');
+console.log('📚 Use the Layers panel to manage your layers');

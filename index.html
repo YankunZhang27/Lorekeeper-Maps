@@ -28,6 +28,7 @@
                         <option value="eraser">🧹 Eraser</option>
                         <option value="text">📝 Text</option>
                         <option value="shape">⬜ Shape</option>
+                        <option value="pan">🖐️ Pan</option>
                     </select>
                 </div>
 
@@ -58,6 +59,26 @@
                     <input type="number" id="font-size" class="number-input" min="10" max="100" value="20" placeholder="Font size">
                 </div>
 
+                <!-- Zoom Controls -->
+                <div class="tool-section">
+                    <label>Zoom Level:</label>
+                    <div class="zoom-controls">
+                        <button id="zoom-out" class="btn btn-small">−</button>
+                        <span id="zoom-display">100%</span>
+                        <button id="zoom-in" class="btn btn-small">+</button>
+                    </div>
+                    <small style="color: #999;">Scroll wheel to zoom</small>
+                </div>
+
+                <!-- Layers Section -->
+                <div class="tool-section">
+                    <h3>Layers</h3>
+                    <div id="layers-container" class="layers-container">
+                        <!-- Layers will be added here -->
+                    </div>
+                    <button id="add-layer" class="btn btn-primary">+ New Layer</button>
+                </div>
+
                 <!-- Buttons -->
                 <div class="button-group">
                     <button id="clear-canvas" class="btn btn-danger">Clear Canvas</button>
@@ -68,7 +89,9 @@
 
             <!-- Canvas Area - Where You Draw -->
             <main class="canvas-area">
-                <canvas id="map-canvas"></canvas>
+                <div class="canvas-wrapper" id="canvas-wrapper">
+                    <canvas id="map-canvas"></canvas>
+                </div>
             </main>
         </div>
 
