@@ -1,11 +1,10 @@
-// JavaScript - This file makes everything WORK and be interactive
+// Lorekeeper Maps - Interactive Fantasy Map Maker
 
-// Get the canvas element and wrapper
 const canvas = document.getElementById('map-canvas');
 const ctx = canvas.getContext('2d');
 const canvasWrapper = document.getElementById('canvas-wrapper');
 
-// Get all control elements
+// UI Elements
 const toolSelect = document.getElementById('tool-select');
 const colorSelect = document.getElementById('color-select');
 const brushSize = document.getElementById('brush-size');
@@ -30,43 +29,184 @@ const deletePinBtn = document.getElementById('delete-pin');
 const pinsSidebar = document.getElementById('pins-sidebar');
 const pinsList = document.getElementById('pins-list');
 
-// ==================== CANVAS & ZOOM/PAN STATE ====================
-
-// Set canvas to be MUCH bigger (2000x2000 instead of screen size)
+// ========== CONSTANTS & STATE ==========
 const CANVAS_WIDTH = 2000;
 const CANVAS_HEIGHT = 2000;
 
 canvas.width = CANVAS_WIDTH;
 canvas.height = CANVAS_HEIGHT;
 
-// Set the display size of the canvas (this is separate from the drawing surface)
-canvas.style.width = CANVAS_WIDTH + 'px';
-canvas.style.height = CANVAS_HEIGHT + 'px';
-
-// Zoom and pan state
 let zoomLevel = 1;
-const minZoom = 0.1;
-const maxZoom = 5;
 let offsetX = 0;
 let offsetY = 0;
-let isPanning = false;
-let panStartX = 0;
-let panStartY = 0;
-
-// Drawing state
 let currentTool = 'pen';
 let currentColor = '#000000';
 let currentSize = 3;
 let isDrawing = false;
+let isPanning = false;
 
-// ==================== PIN SYSTEM ====================
+// ========== LAYER SYSTEM ==========
+class Layer {
+    constructor(name) {
+        this.name = name;
+        this.canvas = document.createElement('canvas');
+        this.canvas.width = CANVAS_WIDTH;
+        this.canvas.height = CANVAS_HEIGHT;
+        this.ctx = this.canvas.getContext('2d');
+        this.visible = true;
+    }
+}
 
+let layers = [];
+let currentLayerIndex = 0;
+let editingLayerIndex = null;
+
+function initializeLayers() {
+    layers = [];
+    addNewLayer('Background');
+}
+
+function addNewLayer(name = null) {
+    name = name || `Layer ${layers.length + 1}`;
+    const layer = new Layer(name);
+    layers.push(layer);
+    currentLayerIndex = layers.length - 1;
+    updateLayerUI();
+    return layer;
+}
+
+function getCurrentLayer() {
+    return layers[currentLayerIndex];
+}
+
+function finishLayerNameEdit() {
+    editingLayerIndex = null;
+    updateLayerUI();
+}
+
+function updateLayerUI() {
+    layersContainer.innerHTML = '';
+
+    for (let i = layers.length - 1; i >= 0; i--) {
+        const layer = layers[i];
+        const isActive = i === currentLayerIndex;
+        const isEditing = i === editingLayerIndex;
+
+        const layerItem = document.createElement('div');
+        layerItem.className = 'layer-item' + (isActive ? ' active' : '');
+
+        // Visibility toggle
+        const visibility = document.createElement('div');
+        visibility.className = 'layer-visibility';
+        visibility.textContent = layer.visible ? '👁️' : '🚫';
+        visibility.title = 'Toggle visibility';
+        visibility.onclick = (e) => {
+            e.stopPropagation();
+            layer.visible = !layer.visible;
+            updateLayerUI();
+            redrawCanvas();
+        };
+
+        // Name (editable)
+        const nameContainer = document.createElement('div');
+        nameContainer.style.flex = '1';
+        nameContainer.style.minWidth = '0';
+
+        if (isEditing) {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = layer.name;
+            input.className = 'text-field';
+            input.style.padding = '4px';
+            input.style.margin = '0';
+            input.style.width = '100%';
+            input.style.fontSize = '0.95em';
+
+            nameContainer.appendChild(input);
+            nameContainer.onclick = (e) => e.stopPropagation();
+
+            setTimeout(() => input.focus(), 0);
+            input.select();
+
+            const saveEdit = () => {
+                layer.name = input.value.trim() || 'Unnamed Layer';
+                editingLayerIndex = null;
+                updateLayerUI();
+            };
+
+            input.addEventListener('blur', saveEdit);
+            input.addEventListener('keydown', (e) => {
+                e.stopPropagation();
+                if (e.key === 'Enter') {
+                    saveEdit();
+                } else if (e.key === 'Escape') {
+                    editingLayerIndex = null;
+                    updateLayerUI();
+                }
+            });
+        } else {
+            const nameSpan = document.createElement('div');
+            nameSpan.className = 'layer-name';
+            nameSpan.textContent = layer.name;
+            nameSpan.title = 'Double-click to rename';
+            nameSpan.style.cursor = 'text';
+            nameSpan.ondblclick = (e) => {
+                e.stopPropagation();
+                editingLayerIndex = i;
+                updateLayerUI();
+            };
+            nameContainer.appendChild(nameSpan);
+        }
+
+        // Delete button
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'btn layer-delete';
+        deleteBtn.textContent = '×';
+        deleteBtn.title = 'Delete layer';
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (layers.length > 1) {
+                layers.splice(i, 1);
+                if (currentLayerIndex >= layers.length) {
+                    currentLayerIndex = layers.length - 1;
+                }
+                updateLayerUI();
+                redrawCanvas();
+            }
+        };
+
+        layerItem.appendChild(visibility);
+        layerItem.appendChild(nameContainer);
+        layerItem.appendChild(deleteBtn);
+
+        layerItem.onclick = () => {
+            if (editingLayerIndex === null) {
+                currentLayerIndex = i;
+                updateLayerUI();
+            }
+        };
+
+        layersContainer.appendChild(layerItem);
+    }
+}
+
+function redrawCanvas() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < layers.length; i++) {
+        if (layers[i].visible) {
+            ctx.drawImage(layers[i].canvas, 0, 0);
+        }
+    }
+    drawPins();
+}
+
+// ========== PIN SYSTEM ==========
 class Pin {
-    constructor(x, y, name = 'New Location', note = '') {
+    constructor(x, y) {
         this.x = x;
         this.y = y;
-        this.name = name;
-        this.note = note;
+        this.name = 'New Location';
+        this.note = '';
         this.id = Date.now();
     }
 }
@@ -114,7 +254,6 @@ function savePinData() {
 
 function updatePinsList() {
     pinsList.innerHTML = '';
-
     if (pins.length === 0) {
         pinsList.innerHTML = '<small style="color: #999;">No locations yet. Add one with the Pin tool!</small>';
         pinsSidebar.style.display = 'none';
@@ -123,247 +262,77 @@ function updatePinsList() {
         pins.forEach(pin => {
             const pinItem = document.createElement('div');
             pinItem.className = 'pin-item';
-            pinItem.innerHTML = `<strong>${pin.name}</strong><small>${pin.note ? pin.note.substring(0, 50) + '...' : 'No notes'}</small>`;
+            const preview = pin.note ? pin.note.substring(0, 50) + '...' : 'No notes';
+            pinItem.innerHTML = `<strong>${pin.name}</strong><small>${preview}</small>`;
             pinItem.onclick = () => openPinModal(pin);
             pinsList.appendChild(pinItem);
         });
     }
 }
 
-function findPinAtPosition(x, y, clickRadius = 15) {
+function findPinAtPosition(x, y) {
     for (let pin of pins) {
-        const distance = Math.sqrt((pin.x - x) ** 2 + (pin.y - y) ** 2);
-        if (distance <= clickRadius) {
-            return pin;
-        }
+        const dist = Math.sqrt((pin.x - x) ** 2 + (pin.y - y) ** 2);
+        if (dist <= 20) return pin;
     }
     return null;
 }
 
 function drawPins() {
     pins.forEach(pin => {
-        if (pin) {
-            ctx.fillStyle = '#FF6B6B';
-            ctx.beginPath();
-            ctx.arc(pin.x, pin.y, 8, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(pin.x, pin.y, 8, 0, Math.PI * 2);
-            ctx.stroke();
-        }
+        ctx.fillStyle = '#FF6B6B';
+        ctx.beginPath();
+        ctx.arc(pin.x, pin.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 2;
+        ctx.stroke();
     });
 }
 
-// ==================== LAYER SYSTEM ====================
-
-class Layer {
-    constructor(name) {
-        this.name = name;
-        this.canvas = document.createElement('canvas');
-        this.canvas.width = CANVAS_WIDTH;
-        this.canvas.height = CANVAS_HEIGHT;
-        this.ctx = this.canvas.getContext('2d');
-        this.visible = true;
-    }
-}
-
-let layers = [];
-let currentLayerIndex = 0;
-
-function initializeLayers() {
-    layers = [];
-    addNewLayer('Background');
-    updateLayerUI();
-}
-
-function addNewLayer(name = null) {
-    if (name === null) {
-        name = `Layer ${layers.length + 1}`;
-    }
-    const layer = new Layer(name);
-    layers.push(layer);
-    currentLayerIndex = layers.length - 1;
-    updateLayerUI();
-    return layer;
-}
-
-function getCurrentLayer() {
-    return layers[currentLayerIndex];
-}
-
-function updateLayerUI() {
-    layersContainer.innerHTML = '';
-
-    for (let i = layers.length - 1; i >= 0; i--) {
-        const layer = layers[i];
-        const layerItem = document.createElement('div');
-        layerItem.className = 'layer-item';
-        if (i === currentLayerIndex) {
-            layerItem.classList.add('active');
-        }
-
-        const visibility = document.createElement('div');
-        visibility.className = 'layer-visibility';
-        visibility.textContent = layer.visible ? '👁️' : '🚫';
-        visibility.title = 'Toggle visibility';
-        visibility.onclick = (e) => {
-            e.stopPropagation();
-            layer.visible = !layer.visible;
-            updateLayerUI();
-            redrawCanvas();
-        };
-
-        const nameSpan = document.createElement('div');
-        nameSpan.className = 'layer-name';
-        nameSpan.textContent = layer.name;
-        nameSpan.title = 'Double-click to rename';
-
-        // Double-click to edit layer name
-        nameSpan.ondblclick = (e) => {
-            e.stopPropagation();
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.value = layer.name;
-            input.className = 'text-field';
-            input.style.margin = '0';
-
-            nameSpan.replaceWith(input);
-            input.focus();
-            input.select();
-
-            function saveName() {
-                layer.name = input.value.trim() || 'Unnamed Layer';
-                updateLayerUI();
-            }
-
-            input.onblur = saveName;
-            input.onkeypress = (e) => {
-                if (e.key === 'Enter') {
-                    saveName();
-                }
-            };
-        };
-
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'btn layer-delete';
-        deleteBtn.textContent = '×';
-        deleteBtn.title = 'Delete layer';
-        deleteBtn.onclick = (e) => {
-            e.stopPropagation();
-            if (layers.length > 1) {
-                layers.splice(i, 1);
-                if (currentLayerIndex >= layers.length) {
-                    currentLayerIndex = layers.length - 1;
-                }
-                updateLayerUI();
-                redrawCanvas();
-            }
-        };
-
-        layerItem.appendChild(visibility);
-        layerItem.appendChild(nameSpan);
-        layerItem.appendChild(deleteBtn);
-
-        layerItem.onclick = () => {
-            currentLayerIndex = i;
-            updateLayerUI();
-        };
-
-        layersContainer.appendChild(layerItem);
-    }
-}
-
-function redrawCanvas() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    for (let i = 0; i < layers.length; i++) {
-        if (layers[i].visible) {
-            ctx.drawImage(layers[i].canvas, 0, 0);
-        }
-    }
-
-    drawPins();
-}
-
-// ==================== ZOOM & PAN FUNCTIONS ====================
-
+// ========== ZOOM & PAN ==========
 function updateZoomDisplay() {
     zoomDisplay.textContent = Math.round(zoomLevel * 100) + '%';
 }
 
-function zoomTo(newZoom, mouseX, mouseY) {
-    const oldZoom = zoomLevel;
-    zoomLevel = Math.max(minZoom, Math.min(maxZoom, newZoom));
-
-    if (mouseX !== undefined && mouseY !== undefined) {
-        offsetX = mouseX - (mouseX - offsetX) * (zoomLevel / oldZoom);
-        offsetY = mouseY - (mouseY - offsetY) * (zoomLevel / oldZoom);
-    }
-
+function zoomTo(newZoom) {
+    zoomLevel = Math.max(0.1, Math.min(5, newZoom));
     updateZoomDisplay();
     updateCanvasTransform();
 }
 
 function updateCanvasTransform() {
-    // Position and scale the canvas for zoom/pan
     canvas.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${zoomLevel})`;
     canvas.style.transformOrigin = '0 0';
-    canvas.style.position = 'absolute';
-    canvas.style.top = '0';
-    canvas.style.left = '0';
 }
 
-// ==================== EVENT LISTENERS ====================
-
-// Zoom with mouse wheel
-canvasWrapper.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const rect = canvasWrapper.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    zoomTo(zoomLevel * delta, mouseX, mouseY);
-});
-
-// Zoom buttons
-zoomInBtn.addEventListener('click', () => zoomTo(zoomLevel * 1.2));
-zoomOutBtn.addEventListener('click', () => zoomTo(zoomLevel * 0.8));
-
-// Layer management
-addLayerBtn.addEventListener('click', addNewLayer);
-
-// Tool selector
+// ========== EVENT LISTENERS ==========
 toolSelect.addEventListener('change', (e) => {
     currentTool = e.target.value;
-
-    if (currentTool === 'text') {
-        textInputSection.style.display = 'block';
-    } else {
-        textInputSection.style.display = 'none';
-    }
-
-    if (currentTool === 'pan') {
-        canvas.classList.add('pan-cursor');
-    } else {
-        canvas.classList.remove('pan-cursor');
-    }
+    textInputSection.style.display = currentTool === 'text' ? 'block' : 'none';
+    canvas.classList.toggle('pan-cursor', currentTool === 'pan');
 });
 
-// Color selector
 colorSelect.addEventListener('change', (e) => {
     currentColor = e.target.value;
 });
 
-// Brush size slider
 brushSize.addEventListener('input', (e) => {
     currentSize = e.target.value;
     sizeDisplay.textContent = currentSize + 'px';
 });
 
-// Clear canvas
+zoomInBtn.addEventListener('click', () => zoomTo(zoomLevel * 1.2));
+zoomOutBtn.addEventListener('click', () => zoomTo(zoomLevel * 0.8));
+
+canvasWrapper.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    zoomTo(zoomLevel * delta);
+});
+
+addLayerBtn.addEventListener('click', addNewLayer);
+
 clearBtn.addEventListener('click', () => {
     if (confirm('Clear the current layer?')) {
         const layer = getCurrentLayer();
@@ -372,14 +341,12 @@ clearBtn.addEventListener('click', () => {
     }
 });
 
-// Undo button
 undoBtn.addEventListener('click', () => {
     const layer = getCurrentLayer();
     layer.ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     redrawCanvas();
 });
 
-// Download as image
 downloadBtn.addEventListener('click', () => {
     const link = document.createElement('a');
     link.href = canvas.toDataURL('image/png');
@@ -387,7 +354,6 @@ downloadBtn.addEventListener('click', () => {
     link.click();
 });
 
-// Pin modal controls
 modalClose.addEventListener('click', closePinModal);
 savePinBtn.addEventListener('click', savePinData);
 deletePinBtn.addEventListener('click', () => {
@@ -397,23 +363,20 @@ deletePinBtn.addEventListener('click', () => {
 });
 
 pinModal.addEventListener('click', (e) => {
-    if (e.target === pinModal) {
-        closePinModal();
-    }
+    if (e.target === pinModal) closePinModal();
 });
 
-// ==================== DRAWING FUNCTIONALITY ====================
-
+// ========== DRAWING ==========
 function getMousePosOnCanvas(e) {
     const rect = canvasWrapper.getBoundingClientRect();
     let x = e.clientX - rect.left;
     let y = e.clientY - rect.top;
-
     x = (x - offsetX) / zoomLevel;
     y = (y - offsetY) / zoomLevel;
-
     return { x, y };
 }
+
+let panStartX, panStartY;
 
 canvas.addEventListener('mousedown', (e) => {
     const pos = getMousePosOnCanvas(e);
@@ -424,8 +387,7 @@ canvas.addEventListener('mousedown', (e) => {
         panStartY = e.clientY;
         canvas.classList.add('panning');
     } else if (currentTool === 'pin') {
-        // Check if clicking on existing pin
-        const clickedPin = findPinAtPosition(pos.x, pos.y, 20);
+        const clickedPin = findPinAtPosition(pos.x, pos.y);
         if (clickedPin) {
             openPinModal(clickedPin);
         } else {
@@ -434,55 +396,48 @@ canvas.addEventListener('mousedown', (e) => {
     } else {
         isDrawing = true;
         const layer = getCurrentLayer();
-        const layerCtx = layer.ctx;
+        const lctx = layer.ctx;
 
         if (currentTool === 'pen') {
-            layerCtx.beginPath();
-            layerCtx.moveTo(pos.x, pos.y);
-        } else if (currentTool === 'text') {
-            if (textInput.value.trim() !== '') {
-                const fontSize = fontSizeInput.value;
-                layerCtx.font = `${fontSize}px Arial`;
-                layerCtx.fillStyle = currentColor;
-                layerCtx.fillText(textInput.value, pos.x, pos.y);
-                textInput.value = '';
-                isDrawing = false;
-            }
+            lctx.beginPath();
+            lctx.moveTo(pos.x, pos.y);
+        } else if (currentTool === 'text' && textInput.value.trim()) {
+            lctx.font = `${fontSizeInput.value}px Arial`;
+            lctx.fillStyle = currentColor;
+            lctx.fillText(textInput.value, pos.x, pos.y);
+            textInput.value = '';
+            isDrawing = false;
         }
-
         redrawCanvas();
     }
 });
 
 canvas.addEventListener('mousemove', (e) => {
-    if (currentTool === 'pan' && isPanning) {
-        const deltaX = e.clientX - panStartX;
-        const deltaY = e.clientY - panStartY;
-        offsetX += deltaX;
-        offsetY += deltaY;
+    if (isPanning) {
+        offsetX += e.clientX - panStartX;
+        offsetY += e.clientY - panStartY;
         panStartX = e.clientX;
         panStartY = e.clientY;
         updateCanvasTransform();
     } else if (isDrawing) {
         const pos = getMousePosOnCanvas(e);
         const layer = getCurrentLayer();
-        const layerCtx = layer.ctx;
+        const lctx = layer.ctx;
 
         if (currentTool === 'pen') {
-            layerCtx.lineWidth = currentSize;
-            layerCtx.lineCap = 'round';
-            layerCtx.lineJoin = 'round';
-            layerCtx.strokeStyle = currentColor;
-            layerCtx.lineTo(pos.x, pos.y);
-            layerCtx.stroke();
+            lctx.lineWidth = currentSize;
+            lctx.lineCap = 'round';
+            lctx.lineJoin = 'round';
+            lctx.strokeStyle = currentColor;
+            lctx.lineTo(pos.x, pos.y);
+            lctx.stroke();
         } else if (currentTool === 'eraser') {
-            layerCtx.clearRect(pos.x - currentSize / 2, pos.y - currentSize / 2, currentSize, currentSize);
+            lctx.clearRect(pos.x - currentSize / 2, pos.y - currentSize / 2, currentSize, currentSize);
         } else if (currentTool === 'shape') {
-            layerCtx.strokeStyle = currentColor;
-            layerCtx.lineWidth = currentSize;
-            layerCtx.strokeRect(pos.x - 20, pos.y - 20, 40, 40);
+            lctx.strokeStyle = currentColor;
+            lctx.lineWidth = currentSize;
+            lctx.strokeRect(pos.x - 20, pos.y - 20, 40, 40);
         }
-
         redrawCanvas();
     }
 });
@@ -501,42 +456,28 @@ canvas.addEventListener('mouseleave', () => {
     ctx.closePath();
 });
 
-// Touch support for mobile
+// Touch support
 canvas.addEventListener('touchstart', (e) => {
     e.preventDefault();
     const touch = e.touches[0];
-    const mouseEvent = new MouseEvent('mousedown', {
-        clientX: touch.clientX,
-        clientY: touch.clientY
-    });
-    canvas.dispatchEvent(mouseEvent);
+    canvas.dispatchEvent(new MouseEvent('mousedown', { clientX: touch.clientX, clientY: touch.clientY }));
 });
 
 canvas.addEventListener('touchmove', (e) => {
     e.preventDefault();
     const touch = e.touches[0];
-    const mouseEvent = new MouseEvent('mousemove', {
-        clientX: touch.clientX,
-        clientY: touch.clientY
-    });
-    canvas.dispatchEvent(mouseEvent);
+    canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: touch.clientX, clientY: touch.clientY }));
 });
 
 canvas.addEventListener('touchend', (e) => {
     e.preventDefault();
-    const mouseEvent = new MouseEvent('mouseup', {});
-    canvas.dispatchEvent(mouseEvent);
+    canvas.dispatchEvent(new MouseEvent('mouseup', {}));
 });
 
-// ==================== INITIALIZATION ====================
-
+// ========== INIT ==========
 initializeLayers();
 updateZoomDisplay();
 updateCanvasTransform();
 updatePinsList();
 
-console.log('✨ Lorekeeper Maps initialized!');
-console.log('🗺️ Canvas size: 2000x2000 pixels');
-console.log('📍 Use the Pin tool to add location markers');
-console.log('📚 Double-click layer names to rename them');
-console.log('🔍 Use scroll wheel to zoom, Pan tool to navigate');
+console.log('🗺️ Lorekeeper Maps ready!');
