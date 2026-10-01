@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorekeeper Maps - Fantasy Map Maker</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🗺️ Lorekeeper Maps</h1>
+            <p>Create your fantasy maps with ease</p>
+        </header>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Left Sidebar - Tools & Options -->
+            <aside class="sidebar">
+                <h2>Tools</h2>
+
+                <!-- Drawing Tool Selector -->
+                <div class="tool-section">
+                    <label for="tool-select">Select Tool:</label>
+                    <select id="tool-select" class="dropdown">
+                        <option value="pen">✏️ Pen</option>
+                        <option value="eraser">🧹 Eraser</option>
+                        <option value="text">📝 Text</option>
+                        <option value="shape">⬜ Shape</option>
+                    </select>
+                </div>
+
+                <!-- Color Picker -->
+                <div class="tool-section">
+                    <label for="color-select">Choose Color:</label>
+                    <select id="color-select" class="dropdown">
+                        <option value="#000000" style="background: #000000;">⚫ Black</option>
+                        <option value="#FF6B6B" style="background: #FF6B6B;">🔴 Red</option>
+                        <option value="#4ECDC4" style="background: #4ECDC4;">🔵 Teal</option>
+                        <option value="#95E1D3" style="background: #95E1D3;">🟢 Green</option>
+                        <option value="#F7DC6F" style="background: #F7DC6F;">🟡 Yellow</option>
+                        <option value="#BB8FCE" style="background: #BB8FCE;">🟣 Purple</option>
+                    </select>
+                </div>
+
+                <!-- Brush Size -->
+                <div class="tool-section">
+                    <label for="brush-size">Brush Size:</label>
+                    <input type="range" id="brush-size" min="1" max="50" value="3" class="slider">
+                    <span id="size-display">3px</span>
+                </div>
+
+                <!-- Text Input (for when Text tool is selected) -->
+                <div class="tool-section" id="text-input-section" style="display: none;">
+                    <label for="text-input">Text to Add:</label>
+                    <input type="text" id="text-input" class="text-field" placeholder="Type your text here...">
+                    <input type="number" id="font-size" class="number-input" min="10" max="100" value="20" placeholder="Font size">
+                </div>
+
+                <!-- Buttons -->
+                <div class="button-group">
+                    <button id="clear-canvas" class="btn btn-danger">Clear Canvas</button>
+                    <button id="undo-btn" class="btn btn-secondary">↶ Undo</button>
+                    <button id="download-btn" class="btn btn-primary">⬇️ Download Map</button>
+                </div>
+            </aside>
+
+            <!-- Canvas Area - Where You Draw -->
+            <main class="canvas-area">
+                <canvas id="map-canvas"></canvas>
+            </main>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Made with ❤️ for fantasy worldbuilders</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
