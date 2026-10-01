@@ -543,8 +543,28 @@ canvas.addEventListener('touchend', (e) => {
 function initialize() {
     console.log('Initializing Lorekeeper Maps...');
 
+    // Wait for DOM to be fully ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeApp();
+        });
+    } else {
+        initializeApp();
+    }
+}
+
+function initializeApp() {
+    console.log('DOM ready, initializing app...');
+
     // Set up canvas sizing
     resizeDisplayCanvas();
+
+    // Also trigger resize on next frame to ensure layout is complete
+    requestAnimationFrame(() => {
+        resizeDisplayCanvas();
+        render();
+    });
+
     window.addEventListener('resize', () => {
         resizeDisplayCanvas();
         render();
@@ -560,6 +580,7 @@ function initialize() {
     render();
 
     console.log('✨ Lorekeeper Maps ready!');
+    console.log('Canvas size:', canvas.width, 'x', canvas.height);
 }
 
 // Initialize when script loads (it's at end of HTML)
