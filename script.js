@@ -30,29 +30,38 @@ const deletePinBtn = document.getElementById('delete-pin');
 const pinsSidebar = document.getElementById('pins-sidebar');
 const pinsList = document.getElementById('pins-list');
 
-// ========== CONSTANTS & STATE ==========
-const CANVAS_WIDTH = 2000;
-const CANVAS_HEIGHT = 2000;
+// ========== CONSTANTS ==========
+const VIRTUAL_WIDTH = 2000;  // Size of the virtual map
+const VIRTUAL_HEIGHT = 2000;
 
-canvas.width = CANVAS_WIDTH;
-canvas.height = CANVAS_HEIGHT;
+// Set display canvas size to match wrapper
+function resizeDisplayCanvas() {
+    canvas.width = canvasWrapper.clientWidth;
+    canvas.height = canvasWrapper.clientHeight;
+    render();
+}
 
+resizeDisplayCanvas();
+window.addEventListener('resize', resizeDisplayCanvas);
+
+// ========== STATE ==========
 let zoomLevel = 1;
-let offsetX = 0;
-let offsetY = 0;
+let panX = 0;  // Pan in virtual coordinates
+let panY = 0;
 let currentTool = 'pen';
 let currentColor = '#000000';
 let currentSize = 3;
 let isDrawing = false;
 let isPanning = false;
+let panStartX, panStartY;
 
 // ========== LAYER SYSTEM ==========
 class Layer {
     constructor(name) {
         this.name = name;
         this.canvas = document.createElement('canvas');
-        this.canvas.width = CANVAS_WIDTH;
-        this.canvas.height = CANVAS_HEIGHT;
+        this.canvas.width = VIRTUAL_WIDTH;
+        this.canvas.height = VIRTUAL_HEIGHT;
         this.ctx = this.canvas.getContext('2d');
         this.visible = true;
     }
@@ -80,11 +89,6 @@ function getCurrentLayer() {
     return layers[currentLayerIndex];
 }
 
-function finishLayerNameEdit() {
-    editingLayerIndex = null;
-    updateLayerUI();
-}
-
 function updateLayerUI() {
     layersContainer.innerHTML = '';
 
@@ -96,7 +100,6 @@ function updateLayerUI() {
         const layerItem = document.createElement('div');
         layerItem.className = 'layer-item' + (isActive ? ' active' : '');
 
-        // Visibility toggle
         const visibility = document.createElement('div');
         visibility.className = 'layer-visibility';
         visibility.textContent = layer.visible ? '👁️' : '🚫';
@@ -105,10 +108,9 @@ function updateLayerUI() {
             e.stopPropagation();
             layer.visible = !layer.visible;
             updateLayerUI();
-            redrawCanvas();
+            render();
         };
 
-        // Name (editable)
         const nameContainer = document.createElement('div');
         nameContainer.style.flex = '1';
         nameContainer.style.minWidth = '0';
@@ -159,7 +161,6 @@ function updateLayerUI() {
             nameContainer.appendChild(nameSpan);
         }
 
-        // Delete button
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'btn layer-delete';
         deleteBtn.textContent = '×';
@@ -172,7 +173,7 @@ function updateLayerUI() {
                     currentLayerIndex = layers.length - 1;
                 }
                 updateLayerUI();
-                redrawCanvas();
+                render();
             }
         };
 
@@ -191,14 +192,37 @@ function updateLayerUI() {
     }
 }
 
-function redrawCanvas() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+// ========== RENDERING ==========
+function render() {
+    // Clear display canvas
+    ctx.fillStyle = '#fafafa';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Calculate visible area in virtual coordinates
+    const displayWidth = canvas.width;
+    const displayHeight = canvas.height;
+
+    const scale = Math.min(displayWidth / VIRTUAL_WIDTH, displayHeight / VIRTUAL_HEIGHT) * zoomLevel;
+
+    // Center the zoomed area
+    const scaledVirtualWidth = VIRTUAL_WIDTH * scale;
+    const scaledVirtualHeight = VIRTUAL_HEIGHT * scale;
+    const displayX = (displayWidth - scaledVirtualWidth) / 2 + panX;
+    const displayY = (displayHeight - scaledVirtualHeight) / 2 + panY;
+
+    // Draw each visible layer
     for (let i = 0; i < layers.length; i++) {
         if (layers[i].visible) {
-            ctx.drawImage(layers[i].canvas, 0, 0);
+            ctx.drawImage(
+                layers[i].canvas,
+                0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT,
+                displayX, displayY, scaledVirtualWidth, scaledVirtualHeight
+            );
         }
     }
-    drawPins();
+
+    // Draw pins
+    drawPins(scale, displayX, displayY);
 }
 
 // ========== PIN SYSTEM ==========
@@ -220,7 +244,7 @@ function addPin(x, y) {
     pins.push(pin);
     updatePinsList();
     openPinModal(pin);
-    redrawCanvas();
+    render();
 }
 
 function deletePin(pinId) {
@@ -228,7 +252,7 @@ function deletePin(pinId) {
     currentPin = null;
     pinModal.style.display = 'none';
     updatePinsList();
-    redrawCanvas();
+    render();
 }
 
 function openPinModal(pin) {
@@ -248,7 +272,7 @@ function savePinData() {
         currentPin.name = pinNameInput.value.trim() || 'Unnamed Location';
         currentPin.note = pinNoteInput.value;
         updatePinsList();
-        redrawCanvas();
+        render();
     }
     closePinModal();
 }
@@ -271,20 +295,29 @@ function updatePinsList() {
     }
 }
 
-function findPinAtPosition(x, y) {
+function findPinAtPosition(virtualX, virtualY) {
     for (let pin of pins) {
-        const dist = Math.sqrt((pin.x - x) ** 2 + (pin.y - y) ** 2);
+        const dist = Math.sqrt((pin.x - virtualX) ** 2 + (pin.y - virtualY) ** 2);
         if (dist <= 20) return pin;
     }
     return null;
 }
 
-function drawPins() {
+function drawPins(scale, displayX, displayY) {
+    const scaledVirtualWidth = VIRTUAL_WIDTH * scale;
+    const scaledVirtualHeight = VIRTUAL_HEIGHT * scale;
+
     pins.forEach(pin => {
+        const pinDisplayX = displayX + (pin.x / VIRTUAL_WIDTH) * scaledVirtualWidth;
+        const pinDisplayY = displayY + (pin.y / VIRTUAL_HEIGHT) * scaledVirtualHeight;
+
+        const pinRadius = Math.max(4, 8 * scale);
+
         ctx.fillStyle = '#FF6B6B';
         ctx.beginPath();
-        ctx.arc(pin.x, pin.y, 8, 0, Math.PI * 2);
+        ctx.arc(pinDisplayX, pinDisplayY, pinRadius, 0, Math.PI * 2);
         ctx.fill();
+
         ctx.strokeStyle = 'white';
         ctx.lineWidth = 2;
         ctx.stroke();
@@ -299,37 +332,38 @@ function updateZoomDisplay() {
 function zoomTo(newZoom) {
     zoomLevel = Math.max(0.1, Math.min(5, newZoom));
     updateZoomDisplay();
-    updateCanvasTransform();
-}
-
-function updateCanvasTransform() {
-    canvas.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${zoomLevel})`;
-    canvas.style.transformOrigin = '0 0';
+    render();
 }
 
 function fitCanvasToViewport() {
-    // Calculate zoom level to fit canvas in viewport
-    const wrapperWidth = canvasWrapper.clientWidth;
-    const wrapperHeight = canvasWrapper.clientHeight;
-
-    const zoomX = wrapperWidth / CANVAS_WIDTH;
-    const zoomY = wrapperHeight / CANVAS_HEIGHT;
-
-    zoomLevel = Math.min(zoomX, zoomY) * 0.9; // 0.9 for some padding
-    zoomLevel = Math.max(0.1, Math.min(5, zoomLevel));
-
-    offsetX = 0;
-    offsetY = 0;
-
+    zoomLevel = 1;
+    panX = 0;
+    panY = 0;
     updateZoomDisplay();
-    updateCanvasTransform();
+    render();
+}
+
+// ========== COORDINATE CONVERSION ==========
+function screenToVirtual(screenX, screenY) {
+    const displayWidth = canvas.width;
+    const displayHeight = canvas.height;
+    const scale = Math.min(displayWidth / VIRTUAL_WIDTH, displayHeight / VIRTUAL_HEIGHT) * zoomLevel;
+
+    const scaledVirtualWidth = VIRTUAL_WIDTH * scale;
+    const scaledVirtualHeight = VIRTUAL_HEIGHT * scale;
+    const displayX = (displayWidth - scaledVirtualWidth) / 2 + panX;
+    const displayY = (displayHeight - scaledVirtualHeight) / 2 + panY;
+
+    const virtualX = (screenX - displayX) / scale;
+    const virtualY = (screenY - displayY) / scale;
+
+    return { x: virtualX, y: virtualY };
 }
 
 // ========== EVENT LISTENERS ==========
 toolSelect.addEventListener('change', (e) => {
     currentTool = e.target.value;
     textInputSection.style.display = currentTool === 'text' ? 'block' : 'none';
-    canvas.classList.toggle('pan-cursor', currentTool === 'pan');
 });
 
 colorSelect.addEventListener('change', (e) => {
@@ -355,31 +389,45 @@ addLayerBtn.addEventListener('click', addNewLayer);
 clearLayerBtn.addEventListener('click', () => {
     if (confirm('Clear only the current layer?')) {
         const layer = getCurrentLayer();
-        layer.ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        redrawCanvas();
+        layer.ctx.clearRect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+        render();
     }
 });
 
 clearBtn.addEventListener('click', () => {
     if (confirm('Clear ALL layers? This cannot be undone.')) {
         for (let layer of layers) {
-            layer.ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            layer.ctx.clearRect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
         }
         pins = [];
         updatePinsList();
-        redrawCanvas();
+        render();
     }
 });
 
 undoBtn.addEventListener('click', () => {
     const layer = getCurrentLayer();
-    layer.ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    redrawCanvas();
+    layer.ctx.clearRect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+    render();
 });
 
 downloadBtn.addEventListener('click', () => {
+    // Create a temporary canvas with all layers
+    const downloadCanvas = document.createElement('canvas');
+    downloadCanvas.width = VIRTUAL_WIDTH;
+    downloadCanvas.height = VIRTUAL_HEIGHT;
+    const downloadCtx = downloadCanvas.getContext('2d');
+    downloadCtx.fillStyle = '#fafafa';
+    downloadCtx.fillRect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+
+    for (let i = 0; i < layers.length; i++) {
+        if (layers[i].visible) {
+            downloadCtx.drawImage(layers[i].canvas, 0, 0);
+        }
+    }
+
     const link = document.createElement('a');
-    link.href = canvas.toDataURL('image/png');
+    link.href = downloadCanvas.toDataURL('image/png');
     link.download = 'my-lorekeeper-map.png';
     link.click();
 });
@@ -396,26 +444,17 @@ pinModal.addEventListener('click', (e) => {
     if (e.target === pinModal) closePinModal();
 });
 
-// ========== DRAWING ==========
-function getMousePosOnCanvas(e) {
-    const rect = canvasWrapper.getBoundingClientRect();
-    let x = e.clientX - rect.left;
-    let y = e.clientY - rect.top;
-    x = (x - offsetX) / zoomLevel;
-    y = (y - offsetY) / zoomLevel;
-    return { x, y };
-}
-
-let panStartX, panStartY;
-
+// ========== CANVAS DRAWING ==========
 canvas.addEventListener('mousedown', (e) => {
-    const pos = getMousePosOnCanvas(e);
+    const rect = canvas.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+    const pos = screenToVirtual(screenX, screenY);
 
     if (currentTool === 'pan') {
         isPanning = true;
-        panStartX = e.clientX;
-        panStartY = e.clientY;
-        canvas.classList.add('panning');
+        panStartX = screenX;
+        panStartY = screenY;
     } else if (currentTool === 'pin') {
         const clickedPin = findPinAtPosition(pos.x, pos.y);
         if (clickedPin) {
@@ -438,19 +477,23 @@ canvas.addEventListener('mousedown', (e) => {
             textInput.value = '';
             isDrawing = false;
         }
-        redrawCanvas();
+        render();
     }
 });
 
 canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+
     if (isPanning) {
-        offsetX += e.clientX - panStartX;
-        offsetY += e.clientY - panStartY;
-        panStartX = e.clientX;
-        panStartY = e.clientY;
-        updateCanvasTransform();
+        panX += screenX - panStartX;
+        panY += screenY - panStartY;
+        panStartX = screenX;
+        panStartY = screenY;
+        render();
     } else if (isDrawing) {
-        const pos = getMousePosOnCanvas(e);
+        const pos = screenToVirtual(screenX, screenY);
         const layer = getCurrentLayer();
         const lctx = layer.ctx;
 
@@ -468,22 +511,18 @@ canvas.addEventListener('mousemove', (e) => {
             lctx.lineWidth = currentSize;
             lctx.strokeRect(pos.x - 20, pos.y - 20, 40, 40);
         }
-        redrawCanvas();
+        render();
     }
 });
 
 canvas.addEventListener('mouseup', () => {
     isDrawing = false;
     isPanning = false;
-    canvas.classList.remove('panning');
-    ctx.closePath();
 });
 
 canvas.addEventListener('mouseleave', () => {
     isDrawing = false;
     isPanning = false;
-    canvas.classList.remove('panning');
-    ctx.closePath();
 });
 
 // Touch support
@@ -504,18 +543,10 @@ canvas.addEventListener('touchend', (e) => {
     canvas.dispatchEvent(new MouseEvent('mouseup', {}));
 });
 
-// ========== INIT ==========
+// ========== INITIALIZATION ==========
 initializeLayers();
+updateZoomDisplay();
 updatePinsList();
-
-// Auto-fit canvas to viewport on load
-window.addEventListener('load', () => {
-    setTimeout(fitCanvasToViewport, 100);
-});
-
-// Also fit when window resizes
-window.addEventListener('resize', () => {
-    setTimeout(fitCanvasToViewport, 100);
-});
+fitCanvasToViewport();
 
 console.log('🗺️ Lorekeeper Maps ready!');
