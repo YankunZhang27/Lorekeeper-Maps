@@ -38,11 +38,7 @@ const VIRTUAL_HEIGHT = 2000;
 function resizeDisplayCanvas() {
     canvas.width = canvasWrapper.clientWidth;
     canvas.height = canvasWrapper.clientHeight;
-    render();
 }
-
-resizeDisplayCanvas();
-window.addEventListener('resize', resizeDisplayCanvas);
 
 // ========== STATE ==========
 let zoomLevel = 1;
@@ -544,21 +540,27 @@ canvas.addEventListener('touchend', (e) => {
 });
 
 // ========== INITIALIZATION ==========
-// Initialize when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initialize);
-} else {
-    initialize();
-}
-
 function initialize() {
     console.log('Initializing Lorekeeper Maps...');
+
+    // Set up canvas sizing
+    resizeDisplayCanvas();
+    window.addEventListener('resize', () => {
+        resizeDisplayCanvas();
+        render();
+    });
+
+    // Initialize layers and UI
     initializeLayers();
     updateZoomDisplay();
     updatePinsList();
-    setTimeout(() => {
-        fitCanvasToViewport();
-        render();
-    }, 100);
-    console.log('🗺️ Lorekeeper Maps ready!');
+
+    // Fit canvas and render
+    fitCanvasToViewport();
+    render();
+
+    console.log('✨ Lorekeeper Maps ready!');
 }
+
+// Initialize when script loads (it's at end of HTML)
+initialize();
