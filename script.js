@@ -41,7 +41,7 @@ function resizeDisplayCanvas() {
 }
 
 // ========== STATE ==========
-let zoomLevel = 1;
+let zoomLevel = 2;  // Start at 200% zoom
 let panX = 0;  // Pan in virtual coordinates
 let panY = 0;
 let currentTool = 'pen';
@@ -575,8 +575,7 @@ function initializeApp() {
     updateZoomDisplay();
     updatePinsList();
 
-    // Fit canvas and render
-    fitCanvasToViewport();
+    // Initial render at 200% zoom
     render();
 
     console.log('✨ Lorekeeper Maps ready!');
