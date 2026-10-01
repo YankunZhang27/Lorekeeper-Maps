@@ -39,6 +39,10 @@ const CANVAS_HEIGHT = 2000;
 canvas.width = CANVAS_WIDTH;
 canvas.height = CANVAS_HEIGHT;
 
+// Set the display size of the canvas (this is separate from the drawing surface)
+canvas.style.width = CANVAS_WIDTH + 'px';
+canvas.style.height = CANVAS_HEIGHT + 'px';
+
 // Zoom and pan state
 let zoomLevel = 1;
 const minZoom = 0.1;
@@ -304,8 +308,12 @@ function zoomTo(newZoom, mouseX, mouseY) {
 }
 
 function updateCanvasTransform() {
+    // Position and scale the canvas for zoom/pan
     canvas.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${zoomLevel})`;
     canvas.style.transformOrigin = '0 0';
+    canvas.style.position = 'absolute';
+    canvas.style.top = '0';
+    canvas.style.left = '0';
 }
 
 // ==================== EVENT LISTENERS ====================
