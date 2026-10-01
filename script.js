@@ -21,6 +21,14 @@ const zoomOutBtn = document.getElementById('zoom-out');
 const zoomDisplay = document.getElementById('zoom-display');
 const layersContainer = document.getElementById('layers-container');
 const addLayerBtn = document.getElementById('add-layer');
+const pinModal = document.getElementById('pin-modal');
+const modalClose = document.getElementById('modal-close');
+const pinNameInput = document.getElementById('pin-name');
+const pinNoteInput = document.getElementById('pin-note');
+const savePinBtn = document.getElementById('save-pin');
+const deletePinBtn = document.getElementById('delete-pin');
+const pinsSidebar = document.getElementById('pins-sidebar');
+const pinsList = document.getElementById('pins-list');
 
 // ==================== CANVAS & ZOOM/PAN STATE ====================
 
@@ -35,8 +43,8 @@ canvas.height = CANVAS_HEIGHT;
 let zoomLevel = 1;
 const minZoom = 0.1;
 const maxZoom = 5;
-let offsetX = 0;  // How far left/right we've panned
-let offsetY = 0;  // How far up/down we've panned
+let offsetX = 0;
+let offsetY = 0;
 let isPanning = false;
 let panStartX = 0;
 let panStartY = 0;
@@ -47,9 +55,106 @@ let currentColor = '#000000';
 let currentSize = 3;
 let isDrawing = false;
 
+// ==================== PIN SYSTEM ====================
+
+class Pin {
+    constructor(x, y, name = 'New Location', note = '') {
+        this.x = x;
+        this.y = y;
+        this.name = name;
+        this.note = note;
+        this.id = Date.now();
+    }
+}
+
+let pins = [];
+let currentPin = null;
+
+function addPin(x, y) {
+    const pin = new Pin(x, y);
+    pins.push(pin);
+    updatePinsList();
+    openPinModal(pin);
+    redrawCanvas();
+}
+
+function deletePin(pinId) {
+    pins = pins.filter(p => p.id !== pinId);
+    currentPin = null;
+    pinModal.style.display = 'none';
+    updatePinsList();
+    redrawCanvas();
+}
+
+function openPinModal(pin) {
+    currentPin = pin;
+    pinNameInput.value = pin.name;
+    pinNoteInput.value = pin.note;
+    pinModal.style.display = 'flex';
+}
+
+function closePinModal() {
+    pinModal.style.display = 'none';
+    currentPin = null;
+}
+
+function savePinData() {
+    if (currentPin) {
+        currentPin.name = pinNameInput.value.trim() || 'Unnamed Location';
+        currentPin.note = pinNoteInput.value;
+        updatePinsList();
+        redrawCanvas();
+    }
+    closePinModal();
+}
+
+function updatePinsList() {
+    pinsList.innerHTML = '';
+
+    if (pins.length === 0) {
+        pinsList.innerHTML = '<small style="color: #999;">No locations yet. Add one with the Pin tool!</small>';
+        pinsSidebar.style.display = 'none';
+    } else {
+        pinsSidebar.style.display = 'flex';
+        pins.forEach(pin => {
+            const pinItem = document.createElement('div');
+            pinItem.className = 'pin-item';
+            pinItem.innerHTML = `<strong>${pin.name}</strong><small>${pin.note ? pin.note.substring(0, 50) + '...' : 'No notes'}</small>`;
+            pinItem.onclick = () => openPinModal(pin);
+            pinsList.appendChild(pinItem);
+        });
+    }
+}
+
+function findPinAtPosition(x, y, clickRadius = 15) {
+    for (let pin of pins) {
+        const distance = Math.sqrt((pin.x - x) ** 2 + (pin.y - y) ** 2);
+        if (distance <= clickRadius) {
+            return pin;
+        }
+    }
+    return null;
+}
+
+function drawPins() {
+    pins.forEach(pin => {
+        if (pin) {
+            ctx.fillStyle = '#FF6B6B';
+            ctx.beginPath();
+            ctx.arc(pin.x, pin.y, 8, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(pin.x, pin.y, 8, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+    });
+}
+
 // ==================== LAYER SYSTEM ====================
 
-// Each layer is like a separate transparent sheet you can draw on
 class Layer {
     constructor(name) {
         this.name = name;
@@ -61,18 +166,15 @@ class Layer {
     }
 }
 
-// Array to hold all our layers
 let layers = [];
 let currentLayerIndex = 0;
 
-// Create the first layer when the app starts
 function initializeLayers() {
     layers = [];
     addNewLayer('Background');
     updateLayerUI();
 }
 
-// Add a new empty layer
 function addNewLayer(name = null) {
     if (name === null) {
         name = `Layer ${layers.length + 1}`;
@@ -84,16 +186,13 @@ function addNewLayer(name = null) {
     return layer;
 }
 
-// Get the currently active layer
 function getCurrentLayer() {
     return layers[currentLayerIndex];
 }
 
-// Update the layer list UI (the sidebar)
 function updateLayerUI() {
     layersContainer.innerHTML = '';
 
-    // Add each layer to the UI (in reverse order so newest is on top)
     for (let i = layers.length - 1; i >= 0; i--) {
         const layer = layers[i];
         const layerItem = document.createElement('div');
@@ -116,6 +215,33 @@ function updateLayerUI() {
         const nameSpan = document.createElement('div');
         nameSpan.className = 'layer-name';
         nameSpan.textContent = layer.name;
+        nameSpan.title = 'Double-click to rename';
+
+        // Double-click to edit layer name
+        nameSpan.ondblclick = (e) => {
+            e.stopPropagation();
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = layer.name;
+            input.className = 'text-field';
+            input.style.margin = '0';
+
+            nameSpan.replaceWith(input);
+            input.focus();
+            input.select();
+
+            function saveName() {
+                layer.name = input.value.trim() || 'Unnamed Layer';
+                updateLayerUI();
+            }
+
+            input.onblur = saveName;
+            input.onkeypress = (e) => {
+                if (e.key === 'Enter') {
+                    saveName();
+                }
+            };
+        };
 
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'btn layer-delete';
@@ -137,7 +263,6 @@ function updateLayerUI() {
         layerItem.appendChild(nameSpan);
         layerItem.appendChild(deleteBtn);
 
-        // Click to select layer
         layerItem.onclick = () => {
             currentLayerIndex = i;
             updateLayerUI();
@@ -147,16 +272,16 @@ function updateLayerUI() {
     }
 }
 
-// Redraw the final canvas by combining all visible layers
 function redrawCanvas() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw each visible layer on top of each other
     for (let i = 0; i < layers.length; i++) {
         if (layers[i].visible) {
             ctx.drawImage(layers[i].canvas, 0, 0);
         }
     }
+
+    drawPins();
 }
 
 // ==================== ZOOM & PAN FUNCTIONS ====================
@@ -166,12 +291,10 @@ function updateZoomDisplay() {
 }
 
 function zoomTo(newZoom, mouseX, mouseY) {
-    // Calculate the point we want to keep centered when zooming
     const oldZoom = zoomLevel;
     zoomLevel = Math.max(minZoom, Math.min(maxZoom, newZoom));
 
     if (mouseX !== undefined && mouseY !== undefined) {
-        // Adjust pan to keep the zoom point centered
         offsetX = mouseX - (mouseX - offsetX) * (zoomLevel / oldZoom);
         offsetY = mouseY - (mouseY - offsetY) * (zoomLevel / oldZoom);
     }
@@ -181,7 +304,6 @@ function zoomTo(newZoom, mouseX, mouseY) {
 }
 
 function updateCanvasTransform() {
-    // Apply CSS transform to scale and position the canvas
     canvas.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${zoomLevel})`;
     canvas.style.transformOrigin = '0 0';
 }
@@ -191,7 +313,7 @@ function updateCanvasTransform() {
 // Zoom with mouse wheel
 canvasWrapper.addEventListener('wheel', (e) => {
     e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;  // Zoom out or in
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
     const rect = canvasWrapper.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
@@ -215,7 +337,6 @@ toolSelect.addEventListener('change', (e) => {
         textInputSection.style.display = 'none';
     }
 
-    // Update cursor
     if (currentTool === 'pan') {
         canvas.classList.add('pan-cursor');
     } else {
@@ -243,7 +364,7 @@ clearBtn.addEventListener('click', () => {
     }
 });
 
-// Undo button (simple - clears the current layer)
+// Undo button
 undoBtn.addEventListener('click', () => {
     const layer = getCurrentLayer();
     layer.ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -258,6 +379,21 @@ downloadBtn.addEventListener('click', () => {
     link.click();
 });
 
+// Pin modal controls
+modalClose.addEventListener('click', closePinModal);
+savePinBtn.addEventListener('click', savePinData);
+deletePinBtn.addEventListener('click', () => {
+    if (currentPin && confirm('Delete this location?')) {
+        deletePin(currentPin.id);
+    }
+});
+
+pinModal.addEventListener('click', (e) => {
+    if (e.target === pinModal) {
+        closePinModal();
+    }
+});
+
 // ==================== DRAWING FUNCTIONALITY ====================
 
 function getMousePosOnCanvas(e) {
@@ -265,7 +401,6 @@ function getMousePosOnCanvas(e) {
     let x = e.clientX - rect.left;
     let y = e.clientY - rect.top;
 
-    // Reverse the zoom/pan transformation to get actual canvas coordinates
     x = (x - offsetX) / zoomLevel;
     y = (y - offsetY) / zoomLevel;
 
@@ -276,13 +411,19 @@ canvas.addEventListener('mousedown', (e) => {
     const pos = getMousePosOnCanvas(e);
 
     if (currentTool === 'pan') {
-        // Pan mode - click and drag to move around
         isPanning = true;
         panStartX = e.clientX;
         panStartY = e.clientY;
         canvas.classList.add('panning');
+    } else if (currentTool === 'pin') {
+        // Check if clicking on existing pin
+        const clickedPin = findPinAtPosition(pos.x, pos.y, 20);
+        if (clickedPin) {
+            openPinModal(clickedPin);
+        } else {
+            addPin(pos.x, pos.y);
+        }
     } else {
-        // Drawing modes
         isDrawing = true;
         const layer = getCurrentLayer();
         const layerCtx = layer.ctx;
@@ -307,7 +448,6 @@ canvas.addEventListener('mousedown', (e) => {
 
 canvas.addEventListener('mousemove', (e) => {
     if (currentTool === 'pan' && isPanning) {
-        // Move the canvas around when panning
         const deltaX = e.clientX - panStartX;
         const deltaY = e.clientY - panStartY;
         offsetX += deltaX;
@@ -385,8 +525,10 @@ canvas.addEventListener('touchend', (e) => {
 initializeLayers();
 updateZoomDisplay();
 updateCanvasTransform();
+updatePinsList();
 
 console.log('✨ Lorekeeper Maps initialized!');
-console.log('🎨 Canvas size: 2000x2000 pixels');
-console.log('🔍 Use scroll wheel to zoom, select Pan tool to move around');
-console.log('📚 Use the Layers panel to manage your layers');
+console.log('🗺️ Canvas size: 2000x2000 pixels');
+console.log('📍 Use the Pin tool to add location markers');
+console.log('📚 Double-click layer names to rename them');
+console.log('🔍 Use scroll wheel to zoom, Pan tool to navigate');

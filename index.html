@@ -28,6 +28,7 @@
                         <option value="eraser">🧹 Eraser</option>
                         <option value="text">📝 Text</option>
                         <option value="shape">⬜ Shape</option>
+                        <option value="pin">📍 Pin</option>
                         <option value="pan">🖐️ Pan</option>
                     </select>
                 </div>
@@ -99,6 +100,35 @@
         <footer class="footer">
             <p>Made with ❤️ for fantasy worldbuilders</p>
         </footer>
+    </div>
+
+    <!-- Pin Editor Modal -->
+    <div id="pin-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Location Note</h2>
+                <button id="modal-close" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <label for="pin-name">Location Name:</label>
+                <input type="text" id="pin-name" class="text-field" placeholder="e.g., Capital City">
+
+                <label for="pin-note" style="margin-top: 15px;">Notes:</label>
+                <textarea id="pin-note" class="text-area" placeholder="Write notes about this location..." rows="6"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button id="delete-pin" class="btn btn-danger">Delete Pin</button>
+                <button id="save-pin" class="btn btn-primary">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pin List Sidebar -->
+    <div id="pins-sidebar" class="pins-sidebar" style="display: none;">
+        <h3>📍 Locations</h3>
+        <div id="pins-list" class="pins-list">
+            <!-- Pins will be listed here -->
+        </div>
     </div>
 
     <script src="script.js"></script>
