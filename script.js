@@ -13,6 +13,7 @@ const textInput = document.getElementById('text-input');
 const fontSizeInput = document.getElementById('font-size');
 const textInputSection = document.getElementById('text-input-section');
 const clearBtn = document.getElementById('clear-canvas');
+const clearLayerBtn = document.getElementById('clear-layer');
 const undoBtn = document.getElementById('undo-btn');
 const downloadBtn = document.getElementById('download-btn');
 const zoomInBtn = document.getElementById('zoom-in');
@@ -306,6 +307,24 @@ function updateCanvasTransform() {
     canvas.style.transformOrigin = '0 0';
 }
 
+function fitCanvasToViewport() {
+    // Calculate zoom level to fit canvas in viewport
+    const wrapperWidth = canvasWrapper.clientWidth;
+    const wrapperHeight = canvasWrapper.clientHeight;
+
+    const zoomX = wrapperWidth / CANVAS_WIDTH;
+    const zoomY = wrapperHeight / CANVAS_HEIGHT;
+
+    zoomLevel = Math.min(zoomX, zoomY) * 0.9; // 0.9 for some padding
+    zoomLevel = Math.max(0.1, Math.min(5, zoomLevel));
+
+    offsetX = 0;
+    offsetY = 0;
+
+    updateZoomDisplay();
+    updateCanvasTransform();
+}
+
 // ========== EVENT LISTENERS ==========
 toolSelect.addEventListener('change', (e) => {
     currentTool = e.target.value;
@@ -333,10 +352,21 @@ canvasWrapper.addEventListener('wheel', (e) => {
 
 addLayerBtn.addEventListener('click', addNewLayer);
 
-clearBtn.addEventListener('click', () => {
-    if (confirm('Clear the current layer?')) {
+clearLayerBtn.addEventListener('click', () => {
+    if (confirm('Clear only the current layer?')) {
         const layer = getCurrentLayer();
         layer.ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        redrawCanvas();
+    }
+});
+
+clearBtn.addEventListener('click', () => {
+    if (confirm('Clear ALL layers? This cannot be undone.')) {
+        for (let layer of layers) {
+            layer.ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        }
+        pins = [];
+        updatePinsList();
         redrawCanvas();
     }
 });
@@ -476,8 +506,16 @@ canvas.addEventListener('touchend', (e) => {
 
 // ========== INIT ==========
 initializeLayers();
-updateZoomDisplay();
-updateCanvasTransform();
 updatePinsList();
+
+// Auto-fit canvas to viewport on load
+window.addEventListener('load', () => {
+    setTimeout(fitCanvasToViewport, 100);
+});
+
+// Also fit when window resizes
+window.addEventListener('resize', () => {
+    setTimeout(fitCanvasToViewport, 100);
+});
 
 console.log('🗺️ Lorekeeper Maps ready!');
